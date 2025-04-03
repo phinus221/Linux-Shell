@@ -8,16 +8,89 @@
 #define BUFFER_SIZE 256
 #define NUMBER_ELEMENTS(a) (sizeof(a)/sizeof(a[0])) //doesnt work for dinamic arrays
 
-// Built-in commands
-const char *built_in[] = {"exit", "cd", "echo", "clear"};
+typedef struct BuiltIn BuiltIn;
+typedef void (*command_handler)(char **args);
 
-// Tokenization of the input
+struct BuiltIn {
+  const char* name;
+  command_handler handler;
+  const char *description;
+};
+
+void handle_help();
+
+void handle_exit()
+{
+  exit(1);
+}
+
+void handle_cd(char **args)
+{
+  if(args[1] == NULL)
+  {
+    printf("cd: missing argument\n");
+  }
+  else if(chdir(args[1]) != 0)
+  {
+    perror("cd failed");
+  }
+  chdir(args[1]);
+}
+
+void handle_echo(char **args)
+{
+  printf("%s\n", args[1]);
+}
+
+void handle_clear()
+{
+  printf("\e[1;1H\e[2J"); 
+}
+
+void handle_where(char **args)
+{
+  char cwd[PATH_MAX];
+  printf("%s\n", getcwd(cwd, sizeof(cwd)));
+};
+
+void handle_mktext(char **args)
+{
+  FILE *file;
+  const char *filename = strcat(args[1], ".txt");
+  file = fopen(filename, "w");
+
+  fclose(file);
+}
+
+BuiltIn built_in[] = {
+  {"exit", handle_exit, "Exits the shell"},
+  {"cd", handle_cd, "Change directory. Args: The path to the location"},
+  {"echo", handle_echo, "Display message"},
+  {"clear", handle_clear, "Clear the screen"},
+  {"help", handle_help, "Show this help message"},
+  {"whereami", handle_where, "Shows current directory"},
+  {"mktext", handle_mktext, "Creates/Makes an empty text file. Args: Name of the file"}
+};
+
+void handle_help()
+{
+  printf("Available commands:\n");
+  for(size_t i = 0; i < NUMBER_ELEMENTS(built_in); i++)
+  {
+    printf("%s - %s \n", built_in[i].name, built_in[i].description);
+  }
+
+  printf("\nnThe help command only displayes the build-in commands but the shell supports external commands too.\n");
+}
+
+
+// Tokenization of the inputf (chdir("/tmp") != 0)
 char** tokenization(char *buffer)
 {
   char** tokens = malloc((MAX_TOKENS + 1) * sizeof(char*));
   if(!tokens)
   {
-    perror("malloc failed for tokens");
+    perror("malloc failed for tokens\n");
     exit(EXIT_FAILURE);
   }
   
@@ -35,42 +108,19 @@ char** tokenization(char *buffer)
 
 void running_command(char** tokens)
 {
-  //verifing if the command requested is build-in or external
-  // this can *maybe* be improved with verifing the string itself in the built-in global variable
-  int found_index = -1;
+  if(tokens[0] == NULL) return;
+
+  //handleing built in commands
   for(size_t i = 0; i < NUMBER_ELEMENTS(built_in); i++)
   {
-    if(strcmp(built_in[i], tokens[0]) == 0)
+    if(strcmp(built_in[i].name, tokens[0]) == 0)
     {
-      found_index = i;
-      break;
+      built_in[i].handler(tokens);
+      return;
     }
   }
 
-  if(found_index != -1)
-  {
-    switch(found_index)
-    {
-      case 0: //exit
-        exit(0);
-
-      case 1: //cd
-        chdir(tokens[1]);
-        break;
-
-      case 2: // echo 
-        printf("%s", tokens[1]);
-        break;
-
-      case 3: // clear
-        printf("\e[1;1H\e[2J"); //clears the screen using regex, using system("clear") would be counter intuitive for this project
-        break;
-
-      default:
-        break;
-      
-    }
-  }
+  //handeling external commands
 }
 
 int shell_loop()
@@ -108,7 +158,9 @@ int shell_loop()
 
 int main()
 {
+  handle_clear();
   printf("Use the help command to list all commands.\n");
+  printf("\n");
   chdir(getenv("HOME"));
 
   shell_loop();
