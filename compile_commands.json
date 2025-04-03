@@ -1,0 +1,17 @@
+[
+  {
+    "arguments": [
+      "/usr/bin/gcc",
+      "-c",
+      "-Wall",
+      "-Wextra",
+      "-g",
+      "-o",
+      "shell",
+      "main.c"
+    ],
+    "directory": "/home/phinus/Programare/shell",
+    "file": "/home/phinus/Programare/shell/main.c",
+    "output": "/home/phinus/Programare/shell/shell"
+  }
+]
