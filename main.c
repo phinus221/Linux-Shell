@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
+#include <sys/wait.h>
 
 #define MAX_TOKENS 50
 #define BUFFER_SIZE 256
@@ -21,7 +22,7 @@ void handle_help();
 
 void handle_exit()
 {
-  exit(1);
+  exit(0);
 }
 
 void handle_cd(char **args)
@@ -47,7 +48,7 @@ void handle_clear()
   printf("\e[1;1H\e[2J"); 
 }
 
-void handle_where(char **args)
+void handle_where()
 {
   char cwd[PATH_MAX];
   printf("%s\n", getcwd(cwd, sizeof(cwd)));
@@ -55,11 +56,31 @@ void handle_where(char **args)
 
 void handle_mktext(char **args)
 {
-  FILE *file;
-  const char *filename = strcat(args[1], ".txt");
-  file = fopen(filename, "w");
+  if(args[1] != NULL)
+  {
+    FILE *file;
+    char *filename = args[1];
 
-  fclose(file);
+    if(args[2] != NULL)
+    {
+      char *cd_args[] = {"cd", args[2], NULL};
+      handle_cd(cd_args);
+
+    }
+    
+    size_t len = strlen(args[1]);
+    if(strcmp(args[1] + len - 4, ".txt") == 0)
+    {
+      filename = strcat(args[1], ".txt");
+    }
+
+    file = fopen(filename, "w");
+
+    fclose(file);
+  }
+  else {
+    printf("Please provide the name of the file.\n");
+  }
 }
 
 BuiltIn built_in[] = {
@@ -69,7 +90,7 @@ BuiltIn built_in[] = {
   {"clear", handle_clear, "Clear the screen"},
   {"help", handle_help, "Show this help message"},
   {"whereami", handle_where, "Shows current directory"},
-  {"mktext", handle_mktext, "Creates/Makes an empty text file. Args: Name of the file"}
+  {"mktext", handle_mktext, "Creates/Makes an empty text file. Args: 1: Name of the file; [2]: Desired path."}
 };
 
 void handle_help()
@@ -80,7 +101,7 @@ void handle_help()
     printf("%s - %s \n", built_in[i].name, built_in[i].description);
   }
 
-  printf("\nnThe help command only displayes the build-in commands but the shell supports external commands too.\n");
+  printf("\nThe help command only displayes the build-in commands but the shell supports external commands too.\n");
 }
 
 
@@ -108,6 +129,10 @@ char** tokenization(char *buffer)
 
 void running_command(char** tokens)
 {
+  int is_built = 0;
+  int is_external = 0;
+  int status;
+
   if(tokens[0] == NULL) return;
 
   //handleing built in commands
@@ -115,12 +140,46 @@ void running_command(char** tokens)
   {
     if(strcmp(built_in[i].name, tokens[0]) == 0)
     {
+      is_built = 1;
       built_in[i].handler(tokens);
       return;
     }
   }
+  
+  //handle external commands
+  if(is_built == 0)
+  {
+    pid_t pid = fork();
+    if(pid == -1)
+    {
+      perror("fork failed\n");
+    }
+    else if(pid == 0)
+    {
+      int i = 0;
 
-  //handeling external commands
+      while(tokens[i] != NULL)
+      {
+        if(execvp(tokens[0], &tokens[i]) == -1)
+        {
+          perror("\n");
+          is_external = 0;
+        }
+
+        i++;
+      }
+    }
+    else {
+      waitpid(pid, &status, 0);  
+      is_external = 1;
+    }
+
+  }
+
+  if(is_built == 0 && is_external == 0)
+  {
+    printf("%s command doesn't exist.\n", tokens[0]);
+  }
 }
 
 int shell_loop()
@@ -140,6 +199,8 @@ int shell_loop()
         printf("\n");
         break;
       }
+
+      //change how the input is read, cant use arrows to move the cursor. consider changing fgets() with read()
 
       buffer[strcspn(buffer, "\n")] = 0;
 
