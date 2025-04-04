@@ -163,6 +163,7 @@ void running_command(char** tokens)
         if(execvp(tokens[0], &tokens[i]) == -1)
         {
           perror("\n");
+          exit(0);
           is_external = 0;
         }
 
