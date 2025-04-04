@@ -1,9 +1,17 @@
+// TO-DO:
+// add support for > (redicert stdout to a file), < (redirect stdin to a file), >> (append to a file)
+// add uspport for piies
+// add support for background procceses (&)
+// add support for history
+// add support for line editing (thus modifying the current input handeling)
+
 #include <linux/limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
 #include <sys/wait.h>
+#include <signal.h>
 
 #define MAX_TOKENS 50
 #define BUFFER_SIZE 256
@@ -65,7 +73,6 @@ void handle_mktext(char **args)
     {
       char *cd_args[] = {"cd", args[2], NULL};
       handle_cd(cd_args);
-
     }
     
     size_t len = strlen(args[1]);
@@ -75,7 +82,6 @@ void handle_mktext(char **args)
     }
 
     file = fopen(filename, "w");
-
     fclose(file);
   }
   else {
@@ -100,7 +106,6 @@ void handle_help()
   {
     printf("%s - %s \n", built_in[i].name, built_in[i].description);
   }
-
   printf("\nThe help command only displayes the build-in commands but the shell supports external commands too.\n");
 }
 
@@ -131,7 +136,7 @@ void running_command(char** tokens)
 {
   int is_built = 0;
   int is_external = 0;
-  int status;
+  int status; 
 
   if(tokens[0] == NULL) return;
 
@@ -156,22 +161,37 @@ void running_command(char** tokens)
     }
     else if(pid == 0)
     {
-      int i = 0;
-
-      while(tokens[i] != NULL)
+      signal(SIGINT, SIG_DFL);
+      if(setpgid(0, 0) == -1)
       {
-        if(execvp(tokens[0], &tokens[i]) == -1)
-        {
-          perror("\n");
-          exit(0);
-          is_external = 0;
-        }
-
-        i++;
+        perror("child setpgid");
+        exit(EXIT_FAILURE);
       }
+      execvp(tokens[0], tokens);
+      perror("execvp failed");
+      exit(EXIT_FAILURE);
+
     }
     else {
+      if(setpgid(pid, pid) == -1)
+      {
+        perror("parent setpgid");
+      }
+      if(tcsetpgrp(STDIN_FILENO, pid) == -1)
+      {
+        perror("tcsetpgrp");
+      }
+
       waitpid(pid, &status, 0);  
+      
+      if(tcsetpgrp(STDIN_FILENO, getpgid(0)) == -1)
+      {
+        perror("tcsetpgrp restore");
+      }
+      if(WIFSIGNALED(status))
+      {
+        printf("\n");
+      }
       is_external = 1;
     }
 
@@ -201,16 +221,14 @@ int shell_loop()
         break;
       }
 
-      //change how the input is read, cant use arrows to move the cursor. consider changing fgets() with read()
-
       buffer[strcspn(buffer, "\n")] = 0;
-
       char **tokens = tokenization(buffer);
 
       running_command(tokens);
       free(tokens);
 
-    } else {
+    } 
+    else {
       perror("getcwd() error!");
       return 1;
     }
@@ -220,6 +238,9 @@ int shell_loop()
 
 int main()
 {
+  setpgid(0, 0); 
+  tcsetpgrp(STDIN_FILENO, getpgid(0));
+  signal(SIGINT, SIG_IGN); //the shell ignores CTRL+C signal
   handle_clear();
   printf("Use the help command to list all commands.\n");
   printf("\n");
