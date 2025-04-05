@@ -7,7 +7,7 @@ all: shell
 
 shell: main.c
 	clear
-	$(CC) $(CFLAGS) -o $@ $^
+	$(CC) $(CFLAGS) -o $@ $^ -lreadline 
 
 clean:
 	rm -f shell

@@ -1,9 +1,6 @@
 // TO-DO:
 // add support for > (redicert stdout to a file), < (redirect stdin to a file), >> (append to a file)
-// add uspport for piies
-// add support for background procceses (&)
-// add support for history
-// add support for line editing (thus modifying the current input handeling)
+// add support for pipes
 
 #include <linux/limits.h>
 #include <stdio.h>
@@ -12,6 +9,8 @@
 #include <string.h>
 #include <sys/wait.h>
 #include <signal.h>
+#include <readline/readline.h>
+#include <readline/history.h>
 
 #define MAX_TOKENS 50
 #define BUFFER_SIZE 256
@@ -110,7 +109,7 @@ void handle_help()
 }
 
 
-// Tokenization of the inputf (chdir("/tmp") != 0)
+// Tokenization of the input
 char** tokenization(char *buffer)
 {
   char** tokens = malloc((MAX_TOKENS + 1) * sizeof(char*));
@@ -135,7 +134,6 @@ char** tokenization(char *buffer)
 void running_command(char** tokens)
 {
   int is_built = 0;
-  int is_external = 0;
   int status; 
 
   if(tokens[0] == NULL) return;
@@ -145,8 +143,8 @@ void running_command(char** tokens)
   {
     if(strcmp(built_in[i].name, tokens[0]) == 0)
     {
-      is_built = 1;
       built_in[i].handler(tokens);
+      is_built = 1;
       return;
     }
   }
@@ -162,27 +160,29 @@ void running_command(char** tokens)
     else if(pid == 0)
     {
       signal(SIGINT, SIG_DFL);
-      if(setpgid(0, 0) == -1)
+      if(setpgid(0, 0) == -1) //setting the child proccess PID to 0
       {
-        perror("child setpgid");
+        perror("child setpgid error");
         exit(EXIT_FAILURE);
       }
-      execvp(tokens[0], tokens);
-      perror("execvp failed");
-      exit(EXIT_FAILURE);
-
+      if(execvp(tokens[0], tokens) == -1)//executing the command
+      {
+        perror("");
+        printf("%s command doesn't exist\n", tokens[0]);
+        exit(EXIT_FAILURE);
+      }
     }
     else {
       if(setpgid(pid, pid) == -1)
       {
-        perror("parent setpgid");
+        perror("parent setpgid error");
       }
       if(tcsetpgrp(STDIN_FILENO, pid) == -1)
       {
-        perror("tcsetpgrp");
+        perror("tcsetpgrp error");
       }
 
-      waitpid(pid, &status, 0);  
+      waitpid(pid, &status, 0);  //wait for the child proccess to finish
       
       if(tcsetpgrp(STDIN_FILENO, getpgid(0)) == -1)
       {
@@ -192,37 +192,25 @@ void running_command(char** tokens)
       {
         printf("\n");
       }
-      is_external = 1;
     }
 
-  }
-
-  if(is_built == 0 && is_external == 0)
-  {
-    printf("%s command doesn't exist.\n", tokens[0]);
   }
 }
 
 int shell_loop()
 {
-  char buffer[BUFFER_SIZE]; 
   char cwd[PATH_MAX];
 
   while(1)
   {
-    if (getcwd(cwd, sizeof(cwd)) != NULL) 
-    {
-      printf("shell : %s>", cwd);
-      fflush(stdout);
+    if (getcwd(cwd, sizeof(cwd)) != NULL) //changes the directory to the current one
+    {      
+      printf("%s : ", cwd);
+      char *input = readline("shell>");
+      if(!input) break;
+      add_history(input);
 
-      if(!fgets(buffer, BUFFER_SIZE, stdin))
-      {
-        printf("\n");
-        break;
-      }
-
-      buffer[strcspn(buffer, "\n")] = 0;
-      char **tokens = tokenization(buffer);
+      char **tokens = tokenization(input);
 
       running_command(tokens);
       free(tokens);
@@ -240,11 +228,11 @@ int main()
 {
   setpgid(0, 0); 
   tcsetpgrp(STDIN_FILENO, getpgid(0));
-  signal(SIGINT, SIG_IGN); //the shell ignores CTRL+C signal
+  signal(SIGINT, SIG_IGN); //the parent proccess (the shell) ignores CTRL+C signal
   handle_clear();
   printf("Use the help command to list all commands.\n");
   printf("\n");
-  chdir(getenv("HOME"));
+  chdir(getenv("HOME")); //changes the current directory to home
 
   shell_loop();
 
